@@ -7,7 +7,7 @@ description: "Turn a raw talking-head recording into a finished 1080x1920 Short,
 
 Input: a raw talking-head recording. Output: `renders/<project>-vN.mp4` at 1080x1920 and 30 fps, a 720p copy in `renders/share/` small enough to send, and the `edit.md` that produced it.
 
-You make every editorial call; the scripts measure, render, and serve the review page. Commands, the `edit.md` format, graphics, and style keys live in [reference.md](reference.md).
+You make every editorial call; the scripts measure, render, and serve the review page. Commands, the `edit.md` format, graphics, and style keys live in [reference.md](reference.md). The reaction pass before the user sees a draft is in [persona-review.md](persona-review.md).
 
 On first use, run `setup.sh`. If it lists missing tools, tell the user Video Short needs them and offer to install them with the commands it prints. A Gemini API key with billing enabled is optional, for generated images, video, and music. Ask the user to save it in `~/.config/video-short/.env` rather than paste it into chat.
 
@@ -51,13 +51,13 @@ Show the plan in chat and wait for a go:
 
 ## 3. Draft and review
 
-Run `render.py --draft`, then `qa.py` on it, and fix anything in its frames that fails the step 4 checks, so the user's review goes to taste, not mistakes. Then run `review.py` in the background. The review page plays the draft on a timeline split into scenes. The user pauses on any frame, presses C to comment, and clicks Send. The script exits and prints each note with its time, scene, spoken words, and a still of the frame the user paused on.
+Run `render.py --draft`, then `qa.py` and `qa_plus.py` on it, and fix anything in its frames or its report that fails the step 4 checks, so the user's review goes to taste, not mistakes. Then run the three seats in [persona-review.md](persona-review.md), each in its own pass, and apply the merge. Then run `review.py` in the background. The review page plays the draft on a timeline split into scenes. The user pauses on any frame, presses C to comment, and clicks Send. The script exits and prints each note with its time, scene, spoken words, and a still of the frame the user paused on.
 
 Look at each note's frame, then apply every note to `edit.md`, render the next draft, and run `review.py --no-open`; the open page reloads itself. Repeat until the user clicks Looks good.
 
 ## 4. Final
 
-Run `render.py`, then `qa.py`, and fix any failed check. Look at `opening.jpg`, `contact.jpg`, and `cuts/*.jpg` in `work/qa/`:
+Run `render.py`, then `qa.py` and `qa_plus.py`, and fix any failed check. `qa.py` measures the file; `qa_plus.py` measures the edit: speaker share, B-roll shot length, repeated clip seconds, scene edges on word boundaries, and a cut that abandons a sentence. Look at `opening.jpg`, `contact.jpg`, and `cuts/*.jpg` in `work/qa/`:
 
 - Captions never cover the mouth or chin.
 - Every cut lands on the right word, with no blank, frozen, or stretched frames.
