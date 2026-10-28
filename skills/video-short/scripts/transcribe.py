@@ -4,7 +4,7 @@ writes OUT_PREFIX.json [{text,start,end}] and OUT_PREFIX.md (phrases with times 
 Parakeet keeps um, uh, stutters, and restarts, which the retake cut needs."""
 import json, os, subprocess, sys, tempfile
 
-from common import HF, die, energy_db, probe, read_wav_mono, run, silence_threshold
+from common import HF, NPX, die, energy_db, probe, read_wav_mono, run, silence_threshold
 
 
 def trim_ends(words, video, hop=0.01):
@@ -25,11 +25,11 @@ def trim_ends(words, video, hop=0.01):
 
 def recognize(video):
     with tempfile.TemporaryDirectory() as tmp:
-        p = subprocess.run(["npx", "-y", HF, "transcribe", os.path.abspath(video), "--engine", "parakeet", "--json", "-d", tmp],
-                           capture_output=True, text=True)
+        p = subprocess.run([NPX, "-y", HF, "transcribe", os.path.abspath(video), "--engine", "parakeet", "--json", "-d", tmp],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
         if p.returncode:
             die("transcription failed. Run setup.sh, which installs the Parakeet model.\n" + (p.stdout + p.stderr)[-800:])
-        words = json.load(open(json.loads(p.stdout)["transcriptPath"]))
+        words = json.load(open(json.loads(p.stdout)["transcriptPath"], encoding="utf-8"))
     words = [{"text": w["text"], "start": w["start"], "end": w["end"]} for w in words if w["text"].strip()]
     return trim_ends(words, video), probe(video)[2]
 
@@ -54,7 +54,7 @@ def write_markdown(words, total, path, title):
         lines.append(f"[{p['start']:.2f}-{p['end']:.2f}] {p['text']}")
         if p["pause_after"] and p["pause_after"] >= 0.5:
             lines.append(f"(pause {p['pause_after']:.2f}s)")
-    open(path, "w").write("\n".join(lines) + "\n")
+    open(path, "w", encoding="utf-8").write("\n".join(lines) + "\n")
 
 
 def transcribe(video, out_prefix):
@@ -62,7 +62,7 @@ def transcribe(video, out_prefix):
     words, total = recognize(video)
     if not words:
         sys.exit("error: no speech found")
-    json.dump(words, open(out_prefix + ".json", "w"), indent=1)
+    json.dump(words, open(out_prefix + ".json", "w", encoding="utf-8"), indent=1)
     write_markdown(words, total, out_prefix + ".md", os.path.basename(out_prefix))
     return words, total
 

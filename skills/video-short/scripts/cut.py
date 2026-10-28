@@ -84,7 +84,7 @@ def main():
         parts.append(f"{joins}concat=n={len(cuts)}:v=1:a=1[vc][ac]")
         parts.append(f"[vc]setsar=1{grade_chain},format=yuv420p[vout]")
         script = os.path.join(tmp, "cut.txt")
-        open(script, "w").write(";\n".join(parts))
+        open(script, "w", encoding="utf-8").write(";\n".join(parts))
         os.makedirs(paths["work"], exist_ok=True)
         run(["ffmpeg", "-v", "error", "-y", "-i", src, "-filter_complex_script", script,
              "-map", "[vout]", "-map", "[ac]", "-c:v", "libx264", "-preset", "fast", "-crf", "16",

@@ -5,11 +5,11 @@ Output: renders/<project>-vN.mp4, never overwriting an earlier version, plus a 7
 import argparse, os, re, shutil, subprocess, tempfile
 
 from build import build
-from common import HF, die, project_paths, run
+from common import HF, NPX, die, project_paths, run
 
 
 def hyperframes(*args):
-    p = subprocess.run(["npx", "-y", HF, *args], capture_output=True, text=True)
+    p = subprocess.run([NPX, "-y", HF, *args], capture_output=True, text=True, encoding="utf-8", errors="replace")
     if p.returncode:
         die(f"hyperframes {args[0]} failed:\n{(p.stdout + p.stderr)[-1500:]}")
     return p.stdout

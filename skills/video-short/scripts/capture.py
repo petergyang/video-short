@@ -3,7 +3,7 @@ A phone-width page reflows its text to fit, so no line runs off the side of the 
 usage: capture.py URL OUT_PNG [--width 540] [--height 6000]"""
 import argparse, os, subprocess
 
-from common import HF, die
+from common import HF, NPX, die
 
 
 def main():
@@ -13,7 +13,7 @@ def main():
     ap.add_argument("--width", type=int, default=540, help="CSS width; the PNG is twice as wide")
     ap.add_argument("--height", type=int, default=6000, help="PNG height in pixels")
     a = ap.parse_args()
-    chrome = subprocess.run(["npx", "-y", HF, "browser", "path"], capture_output=True, text=True).stdout.strip().splitlines()
+    chrome = subprocess.run([NPX, "-y", HF, "browser", "path"], capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.strip().splitlines()
     if not chrome or not os.path.isfile(chrome[-1]):
         die("HyperFrames has no Chrome yet: run setup.sh")
     out = os.path.abspath(a.out)

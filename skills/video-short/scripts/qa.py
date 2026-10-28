@@ -9,7 +9,7 @@ from common import FPS, H, W, parse_edit, project_paths, run
 
 def loudness(video):
     err = subprocess.run(["ffmpeg", "-i", video, "-af", "ebur128=peak=true", "-f", "null", "-"],
-                         capture_output=True, text=True).stderr
+                         capture_output=True, text=True, encoding="utf-8", errors="replace").stderr
     i = re.findall(r"I:\s+(-?[\d.]+)\s+LUFS", err)
     tp = re.findall(r"Peak:\s+(-?[\d.]+)\s+dBFS", err)
     return (float(i[-1]) if i else None), (float(tp[-1]) if tp else None)
@@ -25,7 +25,7 @@ def streams(video):
 
 def black_frames(video):
     err = subprocess.run(["ffmpeg", "-i", video, "-vf", "blackdetect=d=0.03:pix_th=0.08", "-an", "-f", "null", "-"],
-                         capture_output=True, text=True).stderr
+                         capture_output=True, text=True, encoding="utf-8", errors="replace").stderr
     return re.findall(r"black_start:([\d.]+) black_end:([\d.]+)", err)
 
 
@@ -68,7 +68,7 @@ def main():
     lines = [f"# QA: {os.path.basename(video)}", ""]
     lines += [f"- [{'x' if ok else ' '}] {name}: {detail}" for name, ok, detail in checks]
     lines += ["", "Look at contact.jpg, opening.jpg, and cuts/*.jpg (5 frames before and after each scene change)."]
-    open(os.path.join(qa, "report.md"), "w").write("\n".join(lines) + "\n")
+    open(os.path.join(qa, "report.md"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
     print("\n".join(lines))
     print(f"\nFiles in {qa}")
     sys.exit(0 if all(ok for _, ok, _ in checks) else 1)

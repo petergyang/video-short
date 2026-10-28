@@ -2,12 +2,15 @@
 # Run a video-short script in its own venv (numpy).
 # Override the location with VIDEO_SHORT_VENV.
 V="${VIDEO_SHORT_VENV:-$HOME/.cache/video-short/venv}"
-if [ ! -x "$V/bin/python" ]; then
+PY="$V/bin/python"
+[ -x "$V/Scripts/python.exe" ] && PY="$V/Scripts/python.exe"   # Windows venvs put Python in Scripts/
+if [ ! -x "$PY" ]; then
   if command -v uv >/dev/null; then uv venv -q -p 3.12 "$V" || exit 1
   else python3 -m venv "$V" || exit 1; fi
+  [ -x "$V/Scripts/python.exe" ] && PY="$V/Scripts/python.exe"
 fi
-if ! "$V/bin/python" -c "import numpy" 2>/dev/null; then
-  if command -v uv >/dev/null; then uv pip install -q -p "$V/bin/python" numpy || exit 1
-  else "$V/bin/pip" install -q --disable-pip-version-check numpy || exit 1; fi
+if ! "$PY" -c "import numpy" 2>/dev/null; then
+  if command -v uv >/dev/null; then uv pip install -q -p "$PY" numpy || exit 1
+  else "$PY" -m pip install -q --disable-pip-version-check numpy || exit 1; fi
 fi
-exec "$V/bin/python" "$@"
+exec "$PY" "$@"

@@ -199,6 +199,7 @@ addEventListener("keydown", (e) => {
 });
 
 $("send").onclick = async () => {
+  if (note.value.trim()) add();   // a typed note not yet added is still a note, not an approval
   $("send").disabled = true; $("status").textContent = "Sending…";
   try {
     const r = await fetch("/api/feedback", { method: "POST", headers: { "Content-Type": "application/json" },
@@ -241,7 +242,7 @@ def fmt(t):
 def probe(video):
     """Duration in seconds and frame rate of a video, via ffprobe."""
     out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=r_frame_rate:format=duration",
-                          "-of", "json", video], capture_output=True, text=True, check=True).stdout
+                          "-of", "json", video], capture_output=True, text=True, encoding="utf-8", errors="replace", check=True).stdout
     info = json.loads(out)
     num, den = info["streams"][0]["r_frame_rate"].split("/")
     return float(info["format"]["duration"]), round(int(num) / int(den))
@@ -252,7 +253,7 @@ def write_page(root, page, video, scenes):
     dur, fps = probe(video)
     src = "/" + os.path.relpath(video, root) + f"?v={int(os.path.getmtime(video))}"
     os.makedirs(os.path.dirname(page), exist_ok=True)
-    open(page, "w").write(PAGE.format(css=CSS, js=JS, src=html.escape(src), scenes=json.dumps(scenes), dur=dur, fps=fps))
+    open(page, "w", encoding="utf-8").write(PAGE.format(css=CSS, js=JS, src=html.escape(src), scenes=json.dumps(scenes), dur=dur, fps=fps))
 
 
 def save_frames(data, video, out_dir):
@@ -313,7 +314,7 @@ def serve(root, page, feedback, scenes, video, port, open_browser, timeout):
                 return self.send_error(404)
             data = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
             frames = save_frames(data, video, os.path.join(os.path.dirname(feedback), "review-frames"))
-            open(feedback, "w").write(notes_markdown(data, scenes, video, frames))
+            open(feedback, "w", encoding="utf-8").write(notes_markdown(data, scenes, video, frames))
             self.reply({"ok": True})
             done.set()
 
@@ -363,7 +364,13 @@ def serve(root, page, feedback, scenes, video, port, open_browser, timeout):
     server.shutdown()
     if not got:
         sys.exit("No notes before the timeout. Reopen the review page; it keeps unsent notes.")
-    print(open(feedback).read())
+    with open(feedback, encoding="utf-8") as f:
+        notes = f.read()
+    try:
+        print(notes)
+    except UnicodeEncodeError:   # a cp1252 console can't print an emoji or an arrow in a note; the file is already saved
+        sys.stdout.buffer.write(notes.encode("utf-8") + b"\n")
+        sys.stdout.flush()
 
 
 PAGE = """<!DOCTYPE html>

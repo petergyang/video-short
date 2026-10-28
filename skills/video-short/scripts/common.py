@@ -1,10 +1,11 @@
 """Shared helpers: ffmpeg/ffprobe wrappers, style loading, and the edit.md parser."""
-import json, os, re, subprocess, sys, wave
+import json, os, re, shutil, subprocess, sys, wave
 
 import numpy as np
 
 FPS = 30
 HF = "hyperframes@0.8.169"   # pinned, so renders and transcripts stay the same across machines
+NPX = shutil.which("npx") or "npx"   # on Windows npx is npx.cmd, which subprocess cannot find by its bare name
 W, H = 1080, 1920
 SPLIT_TOP = 880  # split layout: B-roll panel is y 0..880, speaker panel is y 880..1920
 LAYOUTS = ("a-roll", "punch", "split", "b-roll")
@@ -16,7 +17,7 @@ def die(msg):
 
 
 def run(cmd, **kw):
-    r = subprocess.run(cmd, capture_output=True, text=True, **kw)
+    r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", **kw)
     if r.returncode:
         die(f"{cmd[0]} failed:\n{r.stderr[-1500:]}")
     return r
@@ -84,7 +85,7 @@ def load_style(project, style_arg=None):
     path = next(c for c in candidates if c and os.path.isfile(c))
 
     def resolved(p):
-        data = json.load(open(p))
+        data = json.load(open(p, encoding="utf-8"))
         base = os.path.dirname(os.path.abspath(os.path.expanduser(p)))
         for section in ("caption", "card"):
             for k, v in data.get(section, {}).items():

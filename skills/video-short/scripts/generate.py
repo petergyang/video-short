@@ -17,7 +17,7 @@ SETTINGS = os.path.expanduser("~/.config/video-short/.env")
 def settings_key():
     """The key from the settings file, so it never has to be pasted into chat."""
     if os.path.isfile(SETTINGS):
-        for line in open(SETTINGS):
+        for line in open(SETTINGS, encoding="utf-8"):
             k, _, v = line.strip().partition("=")
             if k.strip() in ("GEMINI_API_KEY", "GOOGLE_API_KEY") and v.strip():
                 return v.strip().strip("'\"")

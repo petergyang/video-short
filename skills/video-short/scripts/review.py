@@ -21,7 +21,7 @@ def describe(vis):
 
 def build(paths, video, page):
     edit = parse_edit(paths["edit"])
-    words = json.load(open(os.path.join(paths["work"], "transcript_clean.json")))
+    words = json.load(open(os.path.join(paths["work"], "transcript_clean.json"), encoding="utf-8"))
     scenes = [{"id": sc["id"], "start": sc["start"], "end": sc["end"], "layout": sc["layout"], "visual": describe(sc["visual"]),
                "spoken": words_between(words, sc["start"], sc["end"])}
               for sc in validate_scenes(edit, paths["root"], probe(paths["clean"])[2])]

@@ -298,7 +298,7 @@ def build(project, style_arg=None):
     src_w, src_h, duration = probe(paths["clean"])
     scenes = validate_scenes(edit, paths["root"], duration)
     fx, fy = parse_framing(edit)
-    words = json.load(open(os.path.join(paths["work"], "transcript_clean.json")))
+    words = json.load(open(os.path.join(paths["work"], "transcript_clean.json"), encoding="utf-8"))
     total = frames(duration)
     dur = total / FPS
     hf = os.path.join(paths["root"], "hf")
@@ -379,7 +379,7 @@ def build(project, style_arg=None):
             if v["type"] == "receipt":
                 return receipt_panel(sc, i, t0, d, out_h, top, A, js, sfx)
             if v["type"] == "graphic":   # the agent's own HyperFrames sub-composition, copied in so it is self-contained
-                text = open(v["abs"]).read()
+                text = open(v["abs"], encoding="utf-8").read()
                 m = re.search(r'data-composition-id="([^"]+)"', text)
                 if not m:
                     die(f"{v['src']}: a graphic needs a root element with data-composition-id (see reference.md)")
@@ -496,7 +496,7 @@ def build(project, style_arg=None):
                        text=css_color(cd["text"]), accent=css_color(cd["accent"]),
                        hosts="\n".join(hosts), w_cap=cs.get("weight", 500), w_title=cd.get("title_weight", 800),
                        w_body=cd.get("body_weight", 600), w_num=cd.get("number_weight", 800), caps="\n  ".join(caps), script="\n".join(js))
-    open(os.path.join(hf, "index.html"), "w").write(page)
+    open(os.path.join(hf, "index.html"), "w", encoding="utf-8").write(page)
     print(f"Built {len(scenes)} scenes and {len(track)} captions ({dur:.2f}s).")
     return hf, mix, dur
 
