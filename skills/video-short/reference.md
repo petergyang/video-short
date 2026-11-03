@@ -34,10 +34,11 @@ $S/py $S/review.py "$P"            # later rounds: --no-open, the open page relo
 
 # 4. Final
 $S/py $S/render.py "$P"
-$S/py $S/qa.py "$P"
+$S/py $S/qa.py "$P"                                             # the file: size, fps, loudness, black frames
+$S/py $S/qa_plus.py "$P"                                        # the edit: speaker share, shot length, repeats, word edges, hanging sentences
 ```
 
-`render.py` builds the HyperFrames project in `hf/`, renders it, adds the audio mix, and saves the next version in `renders/`, plus a 720p copy under 10 MB or so in `renders/share/` for phones, chat, and email. A draft takes as long as a final; `--draft` only lowers encoding quality. `review.py` reviews the newest render unless you pass a video, saves notes to `work/feedback.md` with a still of each commented frame in `work/review-frames/`, and uses port 8791 or any free port. `render.py` and `cut.py` accept `--style FILE`; `qa.py` checks the newest render unless you pass a video.
+`render.py` builds the HyperFrames project in `hf/`, renders it, adds the audio mix, and saves the next version in `renders/`, plus a 720p copy under 10 MB or so in `renders/share/` for phones, chat, and email. A draft takes as long as a final; `--draft` only lowers encoding quality. `review.py` reviews the newest render unless you pass a video, saves notes to `work/feedback.md` with a still of each commented frame in `work/review-frames/`, and uses port 8791 or any free port. `render.py` and `cut.py` accept `--style FILE`; `qa.py` checks the newest render unless you pass a video. `qa_plus.py` needs no render: it reads `edit.md` and `work/words_clean.json`, so you can run it on a plan before you spend a render on it.
 
 Generation: images come back as 9:16 JPEGs to start a video clip; video clips come from Gemini Omni Flash at 720p, can start from an image, and `--seconds` asks for a length in the prompt, since the model has no duration setting; music under 30 seconds uses the clip model, longer uses the full-song model. Free-tier keys get no generation requests, so the key needs billing enabled. The key comes from `GEMINI_API_KEY` or a `GEMINI_API_KEY=...` line in `~/.config/video-short/.env`, so it never goes in chat. `--model` overrides a default when Google renames a model; current IDs are at https://ai.google.dev/gemini-api/docs/models.
 
