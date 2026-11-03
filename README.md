@@ -72,7 +72,7 @@ I've made this skill as simple as possible to use, just follow these 4 steps:
 3. **Plan.** It researches the topic, finds B-roll from your footage and the web, and shows you a scene-by-scene plan in chat: what's on screen, the words spoken, and anything it wants to generate. Reply "go" or ask for changes.
 4. **Iterate.** Once your agent is done with a draft edit, it'll open the review page for you to play the short, pause on any frame, and leave feedback. The agent will then apply your feedback before reloading the review page with a new version of the short.
 
-Each draft saves a new version and keeps only the one before it, so you can compare the last two, plus a small 720p copy in `renders/share/` to send from your phone or email. The final render keeps just itself.
+Each draft saves a new version and keeps only the one before it, so you can compare the last two, plus a small 720p copy in `renders/share/` to send from your phone or email. The final render replaces every earlier version, and later drafts leave it alone.
 
 ## Make it yours
 
