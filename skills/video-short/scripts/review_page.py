@@ -270,14 +270,14 @@ def save_frames(data, video, out_dir):
     return frames
 
 
-def notes_markdown(data, scenes, video, frames=None):
+def notes_markdown(data, scenes, video, frames=None, words=None):
     by_id = {s["id"]: s for s in scenes}
     frames = frames or {}
     lines = [f"# Review notes: {os.path.basename(video)}", ""]
     for i, c in enumerate(data.get("comments", [])):
         s = by_id.get(c["scene"], {})
         lines += [f"## {fmt(c['t'])} · {short(c['scene'])} ({s.get('layout', '')}, {s.get('visual', '')})",
-                  f"Says: “{s.get('spoken', '')}”"] + ([f"Frame: {frames[i]}"] if i in frames else []) + ["", c["note"], ""]
+                  f"Says: “{words_between(words, c['t'] - 5, c['t'] + 2) if words else s.get('spoken', '')}”"] + ([f"Frame: {frames[i]}"] if i in frames else []) + ["", c["note"], ""]
     if data.get("overall"):
         lines += ["## Overall", data["overall"], ""]
     if len(lines) == 2:
@@ -285,7 +285,7 @@ def notes_markdown(data, scenes, video, frames=None):
     return "\n".join(lines).strip() + "\n"
 
 
-def serve(root, page, feedback, scenes, video, port, open_browser, timeout):
+def serve(root, page, feedback, scenes, video, port, open_browser, timeout, words=None):
     """Serve root (page and video must sit under it), wait for Send, write feedback, print it, and exit."""
     done = threading.Event()
 
@@ -313,7 +313,7 @@ def serve(root, page, feedback, scenes, video, port, open_browser, timeout):
                 return self.send_error(404)
             data = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
             frames = save_frames(data, video, os.path.join(os.path.dirname(feedback), "review-frames"))
-            open(feedback, "w").write(notes_markdown(data, scenes, video, frames))
+            open(feedback, "w").write(notes_markdown(data, scenes, video, frames, words))
             self.reply({"ok": True})
             done.set()
 

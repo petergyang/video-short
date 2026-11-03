@@ -26,7 +26,7 @@ def build(paths, video, page):
                "spoken": words_between(words, sc["start"], sc["end"])}
               for sc in validate_scenes(edit, paths["root"], probe(paths["clean"])[2])]
     write_page(paths["root"], page, video, scenes)
-    return scenes
+    return scenes, words
 
 
 def main():
@@ -43,8 +43,8 @@ def main():
         sys.exit("No render to review. Run render.py --draft first.")
     video = os.path.abspath(a.video or max(renders, key=os.path.getmtime))
     page = os.path.join(paths["work"], "review", "index.html")
-    scenes = build(paths, video, page)
-    serve(paths["root"], page, os.path.join(paths["work"], "feedback.md"), scenes, video, a.port, not a.no_open, a.timeout)
+    scenes, words = build(paths, video, page)
+    serve(paths["root"], page, os.path.join(paths["work"], "feedback.md"), scenes, video, a.port, not a.no_open, a.timeout, words)
 
 
 if __name__ == "__main__":
