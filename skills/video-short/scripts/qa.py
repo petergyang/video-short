@@ -29,6 +29,56 @@ def black_frames(video):
     return re.findall(r"black_start:([\d.]+) black_end:([\d.]+)", err)
 
 
+SPEAKER_LAYOUTS = ("a-roll", "punch", "split")
+CRUSH, BLOW = 16, 235         # the limited-range floor and ceiling; color_range is often unset, and
+                              # 16 also catches a full-range floor. 10% of the frame pegged there is
+                              # clipped, not merely dark or bright.
+LUMA_SPREAD, CHROMA_SPREAD = 25.0, 8.0
+
+
+def frame_stats(video, times):
+    """signalstats for one frame at each time, in one pass. -> [{t,ylow,yhigh,yavg,uavg,vavg}]"""
+    if not times:
+        return []
+    sel = "+".join(f"eq(n\\,{round(t * FPS)})" for t in times)
+    err = subprocess.run(["ffmpeg", "-hide_banner", "-i", video, "-vf",
+                          f"select='{sel}',signalstats,metadata=print", "-an", "-vsync", "0", "-f", "null", "-"],
+                         capture_output=True, text=True).stderr
+    out, cur = [], None
+    for line in err.splitlines():
+        m = re.search(r"pts_time:([\d.]+)", line)
+        if m:
+            cur = {"t": float(m.group(1))}
+            out.append(cur)
+            continue
+        m = re.search(r"signalstats\.(YLOW|YHIGH|YAVG|UAVG|VAVG)=(-?[\d.]+)", line)
+        if m and cur is not None:
+            cur[m.group(1).lower()] = float(m.group(2))
+    return [f for f in out if "yavg" in f]
+
+
+def grade_checks(video, scenes):
+    """Did the Grade survive the render? Measured on speaker scenes, which share one graded source."""
+    mids = [(s["start"] + s["end"]) / 2 for s in scenes if s["layout"] in SPEAKER_LAYOUTS]
+    if not mids:
+        return []                 # nothing graded to measure; qa_plus.py owns the speaker-share rule
+    stats = frame_stats(video, mids)
+    if not stats:
+        return [("Grade measured on speaker scenes", False, "could not read frames")]
+    crushed = [f for f in stats if f.get("ylow", 255) <= CRUSH]
+    blown = [f for f in stats if f.get("yhigh", 0) >= BLOW]
+    bad = ", ".join(f"{f['t']:.2f}s" for f in crushed + blown)
+    spreads = {k: max(f[k] for f in stats) - min(f[k] for f in stats) for k in ("yavg", "uavg", "vavg")}
+    even = spreads["yavg"] <= LUMA_SPREAD and max(spreads["uavg"], spreads["vavg"]) <= CHROMA_SPREAD
+    return [
+        ("Grade keeps shadows and highlights", not (crushed or blown),
+         f"{len(crushed)} crushed, {len(blown)} blown" + (f" at {bad}" if bad else "")),
+        ("Speaker look is even across the Short", even,
+         f"luma spread {spreads['yavg']:.1f}, chroma {max(spreads['uavg'], spreads['vavg']):.1f}"
+         f" over {len(stats)} speaker scenes"),
+    ]
+
+
 def main():
     if len(sys.argv) not in (2, 3):
         sys.exit(__doc__)
@@ -55,11 +105,14 @@ def main():
         ("No black gaps", not blacks, ", ".join(f"{s}-{e}s" for s, e in blacks) or "none"),
     ]
 
+    edit = parse_edit(paths["edit"]) if os.path.isfile(paths["edit"]) else {"scenes": []}
+    if edit["scenes"]:
+        checks += grade_checks(video, edit["scenes"])
+
     run(["ffmpeg", "-v", "error", "-y", "-i", video, "-vf",
          f"fps=2,scale=216:384,tile=8x{max(1, int(vdur * 2 / 8) + 1)}", "-frames:v", "1", os.path.join(qa, "contact.jpg")])
     run(["ffmpeg", "-v", "error", "-y", "-t", "3", "-i", video, "-vf", "fps=6,scale=270:480,tile=6x3", "-frames:v", "1",
          os.path.join(qa, "opening.jpg")])
-    edit = parse_edit(paths["edit"]) if os.path.isfile(paths["edit"]) else {"scenes": []}
     for sc in edit["scenes"][1:]:
         t = max(0.0, sc["start"] - 5 / FPS)
         run(["ffmpeg", "-v", "error", "-y", "-ss", f"{t:.3f}", "-i", video, "-vf", "scale=162:288,tile=10x1",

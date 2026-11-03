@@ -21,7 +21,7 @@ Run `transcribe.py` and read every line of `work/transcript_raw.md`. The transcr
 - Cut between words, never inside one; use the word times in the `.json` for a restart mid-sentence.
 - Start about 0.1s before the first word and end about 0.1s after the last. Leave a natural breath after commas and list items. Never speed up the voice.
 
-Run `cut.py --look` and read the gridded stills, taken from the kept footage, for `Framing: x, y`, the face center. A landscape recording crops to vertical around that point. Add `--grade` to compare a subtle ffmpeg grade side by side, or use `Grade: none` when the footage already looks good.
+Run `cut.py --look` and read the gridded stills, taken from the kept footage, for `Framing: x, y`, the face center. A landscape recording crops to vertical around that point. Add `--grade` to compare a subtle ffmpeg grade side by side, or use `Grade: none` when the footage already looks good. `qa.py` measures the grade again in the finished render, on the speaker scenes: whether it clipped the shadows or highlights, and whether the speaker's look holds even across the Short. An uneven look usually means the kept ranges span a lighting change one filter chain could not fix. A deliberately crushed look is a fair answer to the shadow note; say so to the user rather than regrading.
 
 Run `cut.py`, then read `work/transcript_clean.md`. Fix any clipped word or surviving retake and run it again. All scene times use this cut timeline.
 
