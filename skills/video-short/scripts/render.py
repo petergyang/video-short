@@ -1,7 +1,8 @@
 """Render edit.md into the finished Short: build the HyperFrames project, render it, and add the audio mix.
 usage: render.py PROJECT [--style STYLE_JSON] [--draft]
 --draft renders fast at lower quality for review.
-Output: renders/<project>-vN.mp4, never overwriting an earlier version, plus a 720p copy in renders/share/."""
+Output: renders/<project>-vN.mp4 plus a 720p copy in renders/share/. A draft keeps the previous version for comparison;
+a final render removes every earlier version, since edit.md can rebuild them."""
 import argparse, os, re, shutil, subprocess, tempfile
 
 from build import build
@@ -19,6 +20,17 @@ def next_version(renders, slug):
     os.makedirs(renders, exist_ok=True)
     taken = [int(m.group(1)) for f in os.listdir(renders) if (m := re.fullmatch(rf"{re.escape(slug)}-v(\d+)\.mp4", f))]
     return os.path.join(renders, f"{slug}-v{max(taken, default=0) + 1}.mp4")
+
+
+def prune(out, keep):
+    """Keep the newest `keep` versions in renders/ and renders/share/, counting `out` as the newest."""
+    renders = os.path.dirname(out)
+    slug = re.fullmatch(r"(.+)-v\d+\.mp4", os.path.basename(out)).group(1)
+    versions = {int(m.group(1)): f for f in os.listdir(renders) if (m := re.fullmatch(rf"{re.escape(slug)}-v(\d+)\.mp4", f))}
+    for n in sorted(versions)[:-keep]:
+        for path in (os.path.join(renders, versions[n]), os.path.join(renders, "share", versions[n])):
+            if os.path.exists(path):
+                os.remove(path)
 
 
 def main():
@@ -44,6 +56,7 @@ def main():
     os.makedirs(os.path.dirname(share), exist_ok=True)
     run(["ffmpeg", "-v", "error", "-y", "-i", out, "-vf", "scale=720:1280", "-c:v", "libx264", "-crf", "26", "-preset", "medium",
          "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", share])
+    prune(out, 2 if a.draft else 1)
     print(f"Rendered {out} ({dur:.2f}s), with a 720p copy to share at {share}. Run qa.py next.")
 
 
