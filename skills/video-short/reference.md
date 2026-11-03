@@ -125,6 +125,14 @@ A `graphic:` file is a self-contained HyperFrames sub-composition: inline CSS an
 
 Keep motion purposeful: one entrance per element, eased, then hold. Check it in the draft before the final render.
 
+Before writing a graphic from scratch, check whether one of these [HyperFrames catalog](https://hyperframes.heygen.com/catalog) items fits. Install it in a scratch folder with `npx hyperframes@0.8.169 add <name> --json`, read it, then adapt it into a `graphic:` file: size it to the panel, inline what it needs, use the style's fonts and colors, and enlarge any text a phone can't read. Show real text and numbers. A chat or app mockup illustrates an idea and never stands in as proof of what a product did.
+
+- **Prompts and chats:** `typed-prompt`, `claude-exchange`, `chatgpt-exchange`, `message-thread-reveal`, `notes-reveal`.
+- **Pointing at something:** `cursor-annotate`, `cursor-text-select`.
+- **Hooks and proof:** `apple-money-count`, `notification-cascade`, `x-post`, `reddit-post`.
+- **Explaining:** `whiteboard-ink`, `swipe-rail`, `modal-morph`, `gloss-sweep`, `app-showcase`.
+- **Closing:** `cta-close`, `instagram-follow`, `yt-lower-third`.
+
 ## Layout geometry
 
 - `a-roll`: the camera covers 1080x1920 with the face centered horizontally and 36% down.
