@@ -32,3 +32,6 @@ Answer each check yes or no before sharing the final render. Fix any no first.
 20. Does `qa.py` pass every check?
 21. In the QA frames, does every check in SKILL.md step 4 hold?
 22. Is each emphasis box rare and on a name, number, or main claim?
+
+23. Does the review show moving video after seeking and keep playback available after Send?
+24. Is a foreground feedback poll active during review, with applied batches acknowledged before the next poll?

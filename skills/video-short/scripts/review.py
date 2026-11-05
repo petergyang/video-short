@@ -1,12 +1,12 @@
 """Open the draft render for review on the shared review page (review_page.py): a player with a scene-band
-timeline, where the user comments on any frame and clicks Send. Send saves work/feedback.md and this script prints it and exits.
+timeline, where the user comments on any frame and clicks Send. Send saves durable feedback batches while playback stays available. Listen with --poll WORK and acknowledge applied batches with --ack WORK BATCH_ID.
 usage: review.py PROJECT [VIDEO] [--no-open] [--port 8791] [--timeout 7200]
 VIDEO defaults to the newest renders/*.mp4. Pass --no-open after the first round: the open page reloads itself
 when the next draft is ready."""
 import argparse, glob, json, os, sys
 
 from common import parse_edit, probe, project_paths, validate_scenes
-from review_page import serve, words_between, write_page
+from review_page import serve, words_between, write_page, handle_review_control
 
 
 def describe(vis):
@@ -30,6 +30,8 @@ def build(paths, video, page):
 
 
 def main():
+    if handle_review_control():
+        return
     ap = argparse.ArgumentParser()
     ap.add_argument("project")
     ap.add_argument("video", nargs="?")

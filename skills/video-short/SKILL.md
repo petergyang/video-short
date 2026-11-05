@@ -51,9 +51,9 @@ Show the plan in chat and wait for a go:
 
 ## 3. Draft and review
 
-Run `render.py --draft`, then `qa.py` on it, and fix anything in its frames that fails the step 4 checks, so the user's review goes to taste, not mistakes. Then run `review.py` in the background. The review page plays the draft on a timeline split into scenes. The user pauses on any frame, presses C to comment, and clicks Send. The script exits and prints each note with its time, scene, spoken words, and a still of the frame the user paused on.
+Run `render.py --draft`, then `qa.py` on it, and fix failed frame checks before review. Run `review.py` in a persistent shell session and open its printed URL. Verify the moving picture and seeking in the real browser. The server keeps playback available after Send.
 
-Look at each note's frame, then apply every note to `edit.md`, render the next draft, and run `review.py --no-open`; the open page reloads itself. Repeat until the user clicks Looks good.
+Run `review.py --poll WORK` in the foreground and await it while the user reviews; keep the agent turn active so Send delivers notes without another chat prompt. The page shows whether an agent is listening. Read each returned batch and its frames, apply the notes to `edit.md`, render, and rerun `review.py --no-open` with the same project. After verifying the next draft, run `review.py --ack WORK BATCH_ID` and poll again. Keep unacknowledged notes until applied. Repeat until an approval batch arrives. If review pauses, tell the user that later notes remain saved until listening resumes.
 
 ## 4. Final
 

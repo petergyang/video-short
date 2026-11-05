@@ -1,7 +1,9 @@
 """Shared review page: one player with a scene timeline. The reviewer pauses or keeps playing, comments on any
-frame, and clicks Send. serve() saves the notes as markdown, prints them, and exits.
+frame, and clicks Send. The server persists notes and keeps playing; an agent polls and acknowledges batches.
 Keep this file identical everywhere it is bundled."""
-import html, json, os, re, subprocess, sys, threading, time, webbrowser
+import html, json, os, re, subprocess, sys, threading, time, webbrowser, uuid
+from urllib.request import urlopen
+from urllib.parse import urlsplit
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 CSS = """
@@ -21,9 +23,14 @@ CSS = """
 button, textarea { font: inherit; color: inherit; }
 html, body { height: 100%; overflow: hidden; }
 body { background: var(--canvas); color: var(--txt); font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif; -webkit-font-smoothing: antialiased; display: flex; }
-.stage { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 20px 28px; }
-video { max-height: calc(100vh - 140px); max-width: 100%; width: auto; height: auto; background: #000; border-radius: 10px; cursor: pointer; display: block; }   /* the video's own shape: vertical Shorts and landscape videos both fit */
-.stage video.wide { width: 100%; height: auto; }
+.stage { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 12px; padding: 20px 28px; }
+.player { --ratio: 1.777778; position: relative; flex: none; width: min(100%, calc((100vh - 145px) * var(--ratio))); aspect-ratio: var(--ratio); background: #000; border-radius: 10px; overflow: hidden; }
+.player video, .player canvas, .player img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.player video { opacity: 0; pointer-events: none; }
+.player canvas { cursor: pointer; }
+.player img { pointer-events: none; }
+.media-status { color: var(--danger); min-height: 0; }
+.media-status:empty { display: none; }
 .controls { width: min(100%, 860px); display: flex; flex-direction: column; gap: 8px; }
 .row { display: flex; align-items: center; gap: 10px; }
 .play { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--strong-border); background: var(--card); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 11px; }
@@ -81,7 +88,7 @@ textarea:focus { border-color: var(--focus); background: var(--card); }
 @media (max-aspect-ratio: 4/5) {   /* phone or portrait window: video and timeline on top, comments below */
   body { flex-direction: column; }
   .stage { flex: none; padding: 12px 14px 6px; gap: 8px; }
-  video { max-height: 46vh; }
+  .player { width: min(100%, calc(46vh * var(--ratio))); }
   .rail { width: 100%; flex: 1; min-height: 0; border-left: 0; border-top: 1px solid var(--hair); }
 }
 """
@@ -99,9 +106,9 @@ let state; try { state = JSON.parse(store(KEY)) || { comments: [] }; } catch { s
 state.overall = state.overall || "";
 const save = () => store(KEY, JSON.stringify(state));
 
-// Theme: dark by default, remembered per browser.
-const setTheme = (t) => { document.documentElement.dataset.theme = t; $("theme").textContent = t === "dark" ? "☀" : "☾"; store("review:theme", t); };
-setTheme(store("review:theme") || "dark");
+// Start in the light theme; preserve choices made in this version.
+const setTheme = (t) => { document.documentElement.dataset.theme = t; $("theme").textContent = t === "dark" ? "☀" : "☾"; store("review:theme:v2", t); };
+setTheme(store("review:theme:v2") || "light");
 $("theme").onclick = () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
 $("keysbtn").onclick = (e) => { e.stopPropagation(); $("keys").hidden = !$("keys").hidden; };
 addEventListener("click", (e) => { if (!$("keys").contains(e.target)) $("keys").hidden = true; });
@@ -129,15 +136,32 @@ function tick() {
 }
 ["timeupdate", "seeked", "play", "pause"].forEach((e) => v.addEventListener(e, tick));
 (function loop() { if (!v.paused) tick(); requestAnimationFrame(loop); })();
-const toggle = () => (v.paused ? v.play() : v.pause());
+const toggle = () => {
+  if (v.paused) v.play().catch(() => { $("media-status").textContent = "Playback could not start. Reload the page or open the video directly."; });
+  else v.pause();
+};
 // Playback speed: click to cycle, or < and > to step; remembered per browser.
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 const setSpeed = (r) => { v.playbackRate = r; $("speed").value = String(r); store("review:speed", String(r)); };
 setSpeed(Number(store("review:speed")) || 1);
 const stepSpeed = (d) => { const i = SPEEDS.indexOf(v.playbackRate); setSpeed(SPEEDS[Math.max(0, Math.min(SPEEDS.length - 1, (i < 0 ? 2 : i) + d))]); };
 $("speed").onchange = (e) => { setSpeed(Number(e.target.value)); e.target.blur(); };
-// A landscape video fills the stage width; a vertical one keeps its height.
-v.addEventListener("loadedmetadata", () => v.classList.toggle("wide", v.videoWidth > v.videoHeight));
+// Paint decoded frames onto a canvas. Some embedded webviews lose the native video layer.
+const canvas = $("picture"), context = canvas.getContext("2d", { alpha: false });
+function paint() {
+  if (v.readyState < 2 || !v.videoWidth) return;
+  if (canvas.width !== v.videoWidth || canvas.height !== v.videoHeight) {
+    canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+    $("player").style.setProperty("--ratio", v.videoWidth / v.videoHeight);
+  }
+  try { context.drawImage(v, 0, 0, canvas.width, canvas.height); $("poster").hidden = true; }
+  catch { return; }
+}
+function nextFrame() { paint(); if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(nextFrame); else requestAnimationFrame(nextFrame); }
+nextFrame();
+["loadeddata", "seeked", "pause"].forEach(e => v.addEventListener(e, paint));
+v.addEventListener("error", () => { $("media-status").textContent = "The video could not load. Your notes are safe. Reload or open the video directly."; });
+canvas.onclick = toggle;
 v.addEventListener("ratechange", () => { if (Number($("speed").value) !== v.playbackRate) $("speed").value = String(v.playbackRate); });
 v.onclick = toggle; $("play").onclick = toggle;
 let drag = false;
@@ -168,7 +192,7 @@ function render() {
   updateSend();
 }
 const hasNotes = () => state.comments.length > 0 || state.overall.trim() !== "";
-const updateSend = () => { $("send").textContent = hasNotes() ? "Send notes" : "Looks good"; };
+const updateSend = () => { $("send").textContent = hasNotes() || note.value.trim() ? "Send notes" : "Looks good"; };
 $("overall").value = state.overall;
 $("overall").oninput = () => { state.overall = $("overall").value; save(); updateSend(); };
 // Highlight the comment nearest the playhead.
@@ -182,7 +206,7 @@ function add() {
 }
 // Commenting never pauses: the note keeps the time you started typing.
 note.onfocus = () => { if (!note.value.trim()) note.dataset.t = v.currentTime; };
-note.oninput = () => ($("add").disabled = !note.value.trim());
+note.oninput = () => { $("add").disabled = !note.value.trim(); updateSend(); };
 note.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); add(); } if (e.key === "Escape") { note.value = ""; delete note.dataset.t; $("add").disabled = true; note.blur(); } };
 $("overall").onkeydown = (e) => { if (e.key === "Escape") $("overall").blur(); };
 $("add").onclick = add;
@@ -199,6 +223,7 @@ addEventListener("keydown", (e) => {
 });
 
 $("send").onclick = async () => {
+  if (note.value.trim()) add();
   $("send").disabled = true; $("status").textContent = "Sending…";
   try {
     const r = await fetch("/api/feedback", { method: "POST", headers: { "Content-Type": "application/json" },
@@ -206,11 +231,19 @@ $("send").onclick = async () => {
     if (!r.ok) throw new Error(r.status);
     const approved = !hasNotes();
     state = { comments: [], overall: "" }; $("overall").value = ""; save(); render();
-    $("status").textContent = approved ? "Approved. Your agent has it." : "Sent. This page reloads when the next draft is ready.";
+    const delivery = await r.json();
+    $("status").textContent = delivery.agent === "listening" ? (approved ? "Approval sent to the listening agent." : "Sent to the listening agent. Edits will appear here.") : "Saved. Agent is not listening yet; your notes are queued.";
     $("send").disabled = false;
   } catch { $("status").textContent = "Couldn't reach your agent. Ask it to reopen the review page; your notes are saved here."; render(); $("send").disabled = false; }
 };
 
+async function listenerStatus() {
+  try {
+    const data = await (await fetch("/api/status")).json();
+    $("agent-status").textContent = data.state === "listening" ? "Agent listening" : data.state === "received" ? "Feedback received by agent" : "Agent not listening · Notes are saved";
+  } catch { $("agent-status").textContent = "Review connection lost · Unsent notes stay in this browser"; }
+}
+listenerStatus(); setInterval(listenerStatus, 2000);
 // Reload when the page is rebuilt, unless unsent comments are waiting.
 let version = null;
 setInterval(async () => {
@@ -252,7 +285,11 @@ def write_page(root, page, video, scenes):
     dur, fps = probe(video)
     src = "/" + os.path.relpath(video, root) + f"?v={int(os.path.getmtime(video))}"
     os.makedirs(os.path.dirname(page), exist_ok=True)
-    open(page, "w").write(PAGE.format(css=CSS, js=JS, src=html.escape(src), scenes=json.dumps(scenes), dur=dur, fps=fps))
+    poster = os.path.join(os.path.dirname(page), "poster.jpg")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", video, "-frames:v", "1", "-q:v", "3", poster], check=True)
+    poster_src = "/" + os.path.relpath(poster, root) + f"?v={os.stat(video).st_mtime_ns}"
+    content = PAGE.format(css=CSS, js=JS, src=html.escape(src), poster=html.escape(poster_src), scenes=json.dumps(scenes), dur=dur, fps=fps)
+    atomic_text(page, content)
 
 
 def save_frames(data, video, out_dir):
@@ -285,9 +322,99 @@ def notes_markdown(data, scenes, video, frames=None, words=None):
     return "\n".join(lines).strip() + "\n"
 
 
-def serve(root, page, feedback, scenes, video, port, open_browser, timeout, words=None):
-    """Serve root (page and video must sit under it), wait for Send, write feedback, print it, and exit."""
-    done = threading.Event()
+def atomic_text(path, content):
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    tmp = str(path) + f".{uuid.uuid4().hex}.tmp"
+    with open(tmp, "w") as f:
+        f.write(content)
+    os.replace(tmp, path)
+
+
+def read_json(path, default=None):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
+def pending_batches(work):
+    acked = set(read_json(os.path.join(work, "acknowledged.json"), []))
+    folder = os.path.join(work, "feedback-batches")
+    if not os.path.isdir(folder):
+        return []
+    return [os.path.join(folder, name) for name in sorted(os.listdir(folder))
+            if name.endswith(".json") and name[:-5] not in acked]
+
+
+def agent_status(work):
+    lease = read_json(os.path.join(work, "listener.json"), {})
+    received = read_json(os.path.join(work, "received.json"), {})
+    pending = pending_batches(work)
+    listening = time.time() - lease.get("at", 0) < 10
+    state = "listening" if listening else "received" if pending and time.time() - received.get("at", 0) < 1800 else "idle"
+    return {"state": state, "pending": len(pending)}
+
+
+def poll_feedback(work, timeout=3600):
+    """Block in the active agent's shell; a saved file alone cannot wake an ended turn."""
+    work = os.path.abspath(work)
+    os.makedirs(work, exist_ok=True)
+    lease_path = os.path.join(work, "listener.json")
+    lease = read_json(lease_path, {})
+    if time.time() - lease.get("at", 0) < 10:
+        raise RuntimeError("Another agent is already listening for this review.")
+    token = uuid.uuid4().hex
+    deadline = time.monotonic() + timeout
+    try:
+        while time.monotonic() < deadline:
+            atomic_text(lease_path, json.dumps({"token": token, "at": time.time()}))
+            pending = pending_batches(work)
+            if pending:
+                batch = read_json(pending[0])
+                if batch:
+                    atomic_text(os.path.join(work, "received.json"), json.dumps({"batch_id": batch["batch_id"], "at": time.time()}))
+                    return batch
+            time.sleep(0.5)
+        return {"status": "timeout"}
+    finally:
+        if read_json(lease_path, {}).get("token") == token:
+            try:
+                os.remove(lease_path)
+            except OSError:
+                pass
+
+
+def acknowledge(work, batch_id):
+    if not re.fullmatch(r"[0-9]+-[a-f0-9]{8}", batch_id):
+        raise ValueError("Invalid feedback batch ID")
+    if not os.path.isfile(os.path.join(work, "feedback-batches", batch_id + ".json")):
+        raise ValueError("Feedback batch does not exist")
+    path = os.path.join(work, "acknowledged.json")
+    acked = set(read_json(path, [])); acked.add(batch_id)
+    atomic_text(path, json.dumps(sorted(acked)))
+    return {"status": "acknowledged", "batch_id": batch_id}
+
+
+def handle_review_control():
+    """Shared poll/ack CLI for both generic video review and standalone video-short."""
+    if not any(arg in sys.argv for arg in ("--poll", "--ack", "--status")):
+        return False
+    import argparse
+    ap = argparse.ArgumentParser()
+    group = ap.add_mutually_exclusive_group(required=True)
+    group.add_argument("--poll", metavar="WORK")
+    group.add_argument("--ack", nargs=2, metavar=("WORK", "BATCH_ID"))
+    group.add_argument("--status", metavar="WORK")
+    ap.add_argument("--timeout", type=float, default=3600)
+    a = ap.parse_args()
+    result = poll_feedback(a.poll, a.timeout) if a.poll else acknowledge(*a.ack) if a.ack else agent_status(a.status)
+    print(json.dumps(result), flush=True)
+    return True
+
+
+def build_server(root, page, feedback, scenes, video, port, words=None):
+    work = os.path.dirname(os.path.abspath(feedback))
 
     class Handler(SimpleHTTPRequestHandler):
         def __init__(self, *a, **k):
@@ -297,7 +424,7 @@ def serve(root, page, feedback, scenes, video, port, open_browser, timeout, word
             pass
 
         def end_headers(self):
-            self.send_header("Cache-Control", "no-store")
+            self.send_header("Cache-Control", "no-cache")
             super().end_headers()
 
         def reply(self, obj):
@@ -311,23 +438,58 @@ def serve(root, page, feedback, scenes, video, port, open_browser, timeout, word
         def do_POST(self):
             if self.path != "/api/feedback":
                 return self.send_error(404)
-            data = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
-            frames = save_frames(data, video, os.path.join(os.path.dirname(feedback), "review-frames"))
-            open(feedback, "w").write(notes_markdown(data, scenes, video, frames, words))
-            self.reply({"ok": True})
-            done.set()
+            origin = self.headers.get("Origin")
+            if origin and urlsplit(origin).netloc != self.headers.get("Host"):
+                return self.send_error(403)
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                if not 0 < length <= 1048576:
+                    return self.send_error(413)
+                data = json.loads(self.rfile.read(length))
+                if not isinstance(data, dict) or not isinstance(data.get("comments", []), list) or not isinstance(data.get("overall", ""), str):
+                    raise ValueError("Invalid feedback")
+                for c in data.get("comments", []):
+                    if not isinstance(c, dict) or not isinstance(c.get("t"), (int, float)) or not isinstance(c.get("note"), str) or not isinstance(c.get("scene"), str):
+                        raise ValueError("Invalid comment")
+            except (ValueError, TypeError):
+                return self.send_error(400)
+            batch_id = f"{time.time_ns()}-{uuid.uuid4().hex[:8]}"
+            context = read_json(os.path.join(work, "review-context.json"), {})
+            current_video = context.get("video", video)
+            frames = save_frames(data, current_video, os.path.join(work, "review-frames", batch_id))
+            markdown = notes_markdown(data, context.get("scenes", scenes), current_video, frames, context.get("words", words))
+            folder = os.path.join(work, "feedback-batches")
+            markdown_path = os.path.join(folder, batch_id + ".md")
+            atomic_text(markdown_path, markdown)
+            batch = {"status": "feedback", "batch_id": batch_id, "feedback_path": markdown_path,
+                     "feedback": markdown, "approved": not data.get("comments") and not data.get("overall", "").strip()}
+            atomic_text(os.path.join(folder, batch_id + ".json"), json.dumps(batch))
+            atomic_text(feedback, markdown)
+            self.reply({"ok": True, "batch_id": batch_id, "agent": agent_status(work)["state"]})
+            print(f"Feedback saved: {markdown_path}", flush=True)
 
-        def do_GET(self):   # byte ranges, so the video can seek
-            path = self.path.split("?")[0]
+        def do_GET(self):
+            path = urlsplit(self.path).path
             if path == "/api/version":
-                return self.reply({"version": os.path.getmtime(page)})
+                return self.reply({"version": os.stat(page).st_mtime_ns})
+            if path == "/api/health":
+                return self.reply({"work": work})
+            if path == "/api/status":
+                return self.reply(agent_status(work))
             file, rng = self.translate_path(path), self.headers.get("Range")
             if not rng or not os.path.isfile(file):
                 return super().do_GET()
             size = os.path.getsize(file)
-            m = re.match(r"bytes=(\d*)-(\d*)", rng)
-            start = int(m.group(1)) if m and m.group(1) else 0
-            end = min(int(m.group(2)) if m and m.group(2) else size - 1, size - 1)
+            m = re.fullmatch(r"bytes=(\d*)-(\d*)", rng)
+            if not m or not any(m.groups()):
+                return self.range_error(size)
+            if not m.group(1):
+                start, end = max(0, size - int(m.group(2))), size - 1
+            else:
+                start = int(m.group(1))
+                end = min(int(m.group(2)) if m.group(2) else size - 1, size - 1)
+            if start > end or start >= size:
+                return self.range_error(size)
             self.send_response(206)
             self.send_header("Content-Type", self.guess_type(file))
             self.send_header("Accept-Ranges", "bytes")
@@ -335,8 +497,7 @@ def serve(root, page, feedback, scenes, video, port, open_browser, timeout, word
             self.send_header("Content-Length", str(end - start + 1))
             self.end_headers()
             with open(file, "rb") as f:
-                f.seek(start)
-                left = end - start + 1
+                f.seek(start); left = end - start + 1
                 while left > 0:
                     chunk = f.read(min(1 << 20, left))
                     if not chunk:
@@ -347,31 +508,61 @@ def serve(root, page, feedback, scenes, video, port, open_browser, timeout, word
                         return
                     left -= len(chunk)
 
-    if os.path.exists(feedback):
-        os.remove(feedback)
+        def range_error(self, size):
+            self.send_response(416)
+            self.send_header("Content-Range", f"bytes */{size}")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+    return ThreadingHTTPServer(("127.0.0.1", port), Handler)
+
+
+def serve(root, page, feedback, scenes, video, port, open_browser, timeout, words=None):
+    """Keep media available across submissions; the agent listens with a separate foreground poll."""
+    work = os.path.dirname(os.path.abspath(feedback))
+    atomic_text(os.path.join(work, "review-context.json"), json.dumps({"video": video, "scenes": scenes, "words": words}))
+    info_path = os.path.join(work, "review-server.json")
+    info = read_json(info_path, {})
+    existing = info.get("url", "")
+    if existing.startswith("http://127.0.0.1:"):
+        try:
+            health = json.load(urlopen(existing.split("/review/")[0] + "/api/health", timeout=1))
+            if health.get("work") == work:
+                print(f"Review page: {existing}\nReused running review server. Poll for feedback with --poll {work}", flush=True)
+                if open_browser:
+                    webbrowser.open(existing)
+                return
+        except (OSError, ValueError):
+            pass
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    except OSError:   # port busy: use any free one, and open the page since the old tab can't find it
-        server, open_browser = ThreadingHTTPServer(("127.0.0.1", 0), Handler), True
+        server = build_server(root, page, feedback, scenes, video, port, words)
+    except OSError:
+        server = build_server(root, page, feedback, scenes, video, 0, words)
     url = f"http://127.0.0.1:{server.server_port}/" + os.path.relpath(page, root)
+    atomic_text(info_path, json.dumps({"url": url, "pid": os.getpid()}))
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    print(f"Review page: {url}\nWaiting for Send (saves {feedback})...", flush=True)
+    print(f"Review page: {url}\nMedia stays available after Send. Listen with --poll {work}", flush=True)
     if open_browser:
         webbrowser.open(url)
-    got = done.wait(timeout)
-    time.sleep(0.3)
-    server.shutdown()
-    if not got:
-        sys.exit("No notes before the timeout. Reopen the review page; it keeps unsent notes.")
-    print(open(feedback).read())
+    try:
+        threading.Event().wait(timeout)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.shutdown(); server.server_close()
 
 
 PAGE = """<!DOCTYPE html>
-<html data-theme="dark"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Video review</title>
+<html data-theme="light"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Video review</title>
 <style>{css}</style></head>
 <body>
   <main class="stage">
-    <video id="v" src="{src}" playsinline preload="auto"></video>
+    <div class="player" id="player">
+      <video id="v" src="{src}" playsinline preload="auto"></video>
+      <canvas id="picture" aria-label="Video preview"></canvas>
+      <img id="poster" src="{poster}" alt="Video loading" />
+    </div>
+    <div id="media-status" class="media-status" role="status"></div>
     <div class="controls">
       <div class="row"><button id="play" class="play" type="button" aria-label="Play or pause">▶</button><span id="tc" class="tc"></span><span id="scene" class="chip"></span><select id="speed" class="speed" aria-label="Playback speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1">Normal</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="1.75">1.75×</option><option value="2">2×</option></select><button id="keysbtn" class="icon-btn push" type="button" aria-label="Keyboard shortcuts">?</button></div>
       <div id="keys" class="keys" hidden>
@@ -400,7 +591,8 @@ PAGE = """<!DOCTYPE html>
     <div class="rail-foot">
       <textarea id="overall" placeholder="Overall note (optional)"></textarea>
       <button id="send" class="send" type="button">Looks good</button>
-      <div id="status"></div>
+      <div id="agent-status" class="dim" role="status"></div>
+      <div id="status" role="status"></div>
     </div>
   </aside>
   <script>
